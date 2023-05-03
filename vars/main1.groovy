@@ -49,16 +49,14 @@ def call(body){
 						sh "cat ${workspace}/jenkins/env.groovy"
 	                    load "${workspace}/jenkins/env.groovy"
 						sh "echo ${env.SECURITY_SCAN}"
-						loadProperties("${workspace}/jenkins/env.groovy")
-						sh "echo ${env.SECURITY_SCAN}"
+						//loadProperties("${workspace}/jenkins/env.groovy")
 						sh 'printenv'
 	                }
 	            }
 	        }
 	        stage("Security Scan") {
 	            when {
-	                expression { binding.hasVariable('SECURITY_SCAN') }
-	                expression { SECURITY_SCAN == true }
+	                expression { env.SECURITY_SCAN == "true" }
 	            }
 	            environment {
 	                VUL_TYPE ="library" // "os,library"
@@ -67,14 +65,14 @@ def call(body){
 	                script {
 	                    // Create trivy ignore policy
 	                    def ignore_policy_rego_file = ""
-	                    if (binding.hasVariable('IGNORE_PKGS') && IGNORE_PKGS?.trim()){
+	                    if (env.IGNORE_PKGS?.trim()){
 	                        ignore_policy_rego_file = sh(returnStdout: true, script: 'mktemp --suffix=.rego').trim()
 	                        sh """
 	                        cat > ${ignore_policy_rego_file} <<EOF
 	                        package trivy
 	                        import data.lib.trivy
 	                        default ignore = false
-	                        ignore_pkgs := ${IGNORE_PKGS}
+	                        ignore_pkgs := ${env.IGNORE_PKGS}
 	                        ignore {
 	                            input.PkgName == ignore_pkgs[_]
 	                        }
