@@ -47,13 +47,22 @@ def call(body){
 	            steps {
 	                script {
 						sh "cat ${workspace}/jenkins/env.groovy"
-	                    load "${workspace}/jenkins/env.groovy"
+	                	//load "${workspace}/jenkins/env.groovy"
 						sh "echo ${env.SECURITY_SCAN}"
-						//loadProperties("${workspace}/jenkins/env.groovy")
+						loadProperties("${workspace}/jenkins/env.groovy")
 						sh 'printenv'
 	                }
 	            }
 	        }
+			stage("Test Credentials"){
+				steps {
+					script {
+						withCredentials([string(credentialsId: 'GITHUB_TOKEN', variable: 'GITHUB_TOKEN')]) {
+							sh "echo ${env.GITHUB_TOKEN}"	
+						}
+					}
+				}
+			}
 	        stage("Security Scan") {
 	            when {
 	                expression { env.SECURITY_SCAN == "true" }
