@@ -1,4 +1,15 @@
 
+def loadProperties(path) {
+    properties = new Properties()
+    File propertiesFile = new File(path)
+    properties.load(propertiesFile.newDataInputStream())
+    Set<Object> keys = properties.keySet();
+    for(Object k:keys){
+    String key = (String)k;
+    String value =(String) properties.getProperty(key)
+    env."${key}" = "${value}"
+    }
+}
 
 def call(body){
 
@@ -19,7 +30,9 @@ def call(body){
 	    stages {
 			stage('Print Variables') {
 				steps{
+					// Passed vars
 					echo "${pipelineParams}"
+					// Global vars
 					echo "${BRANCH_NAME}"
 				}
 			}
@@ -33,7 +46,12 @@ def call(body){
 	        stage('Load Environment Variables') {
 	            steps {
 	                script {
-	                    load "jenkins/env.groovy"
+						sh "cat ${workspace}/jenkins/env.groovy"
+	                    load "${workspace}/jenkins/env.groovy"
+						sh "echo ${env.SECURITY_SCAN}"
+						loadProperties("${workspace}/jenkins/env.groovy")
+						sh "echo ${env.SECURITY_SCAN}"
+						sh 'printenv'
 	                }
 	            }
 	        }
