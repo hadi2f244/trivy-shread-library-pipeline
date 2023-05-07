@@ -10,6 +10,18 @@ def loadProperties(path) {
     env."${key}" = "${value}"
     }
 }
+def getCurrentBranch () {
+    return sh (
+        script: 'git rev-parse --abbrev-ref HEAD',
+        returnStdout: true
+    ).trim()
+}
+def getLatestCommit () {
+   return sh (
+        script: 'git rev-parse --short HEAD',
+        returnStdout: true
+    ).trim()
+}
 
 def call(body){
 
@@ -18,16 +30,23 @@ def call(body){
 	body.resolveStrategy = Closure.DELEGATE_FIRST
 	body.delegate = pipelineParams
 	body()
-	
-	
+
+
 	pipeline {
 	    agent any
 	    environment {
-	        APP_NAME = "${pipelineParams.APP_NAME}"
-	        SHORT_COMMIT = GIT_COMMIT.take(7)
-	        HTTP_PROXY = "${pipelineParams.HTTP_PROXY}"
+			def APP_NAME = "test"
+			def BRANCH_NAME = "main"
+			def SHORT_COMMIT = "1234"
 	    }
 	    stages {
+			stage('Load code') {
+				steps {
+					script {
+						checkout([$class: 'GitSCM', branches: [[name: '*/main']], doGenerateSubmoduleConfigurations: false, extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: '.']], extensions: [[$class: 'LocalBranch', localBranch: "**"]], submoduleCfg: [], userRemoteConfigs: [[url: 'https://github.com/hadi2f244/trivy-shread-library-pipeline-withoutjenkinsfile']]])
+					}
+				}
+        	}
 			stage('Print Variables') {
 				steps{
 					// Passed vars
@@ -39,7 +58,7 @@ def call(body){
 	        stage('Build Image') {
 	            steps {
 	                script {
-	                    dockerImage = docker.build("${APP_NAME}:${BRANCH_NAME}-${SHORT_COMMIT}", "--pull --build-arg BRANCH=${BRANCH_NAME} --build-arg COMMIT=${GIT_COMMIT} .")
+	                    dockerImage = docker.build("${APP_NAME}:${BRANCH_NAME}-${SHORT_COMMIT}", "--pull --build-arg BRANCH=${BRANCH_NAME} --build-arg COMMIT=${SHORT_COMMIT} .")
 	                }
 	            }
 	        }
@@ -48,7 +67,6 @@ def call(body){
 	                script {
 						sh "cat ${workspace}/jenkins/env.groovy"
 	                	//load "${workspace}/jenkins/env.groovy"
-						sh "echo ${env.SECURITY_SCAN}"
 						loadProperties("${workspace}/jenkins/env.groovy")
 						sh 'printenv'
 	                }
@@ -58,14 +76,17 @@ def call(body){
 				steps {
 					script {
 						withCredentials([string(credentialsId: 'GITHUB_TOKEN', variable: 'GITHUB_TOKEN')]) {
-							sh "echo ${env.GITHUB_TOKEN}"	
+							sh "echo ${env.GITHUB_TOKEN}"
 						}
 					}
 				}
 			}
 	        stage("Security Scan") {
 	            when {
-	                expression { env.SECURITY_SCAN == "true" }
+					allOf {
+						expression { env.SECURITY_SCAN != null }
+		                expression { SECURITY_SCAN == "true" }
+					}
 	            }
 	            environment {
 	                VUL_TYPE ="library" // "os,library"
@@ -74,27 +95,27 @@ def call(body){
 	                script {
 	                    // Create trivy ignore policy
 	                    def ignore_policy_rego_file = ""
-	                    if (env.IGNORE_PKGS?.trim()){
+	                    if (env.IGNORE_PKGS != null && IGNORE_PKGS?.trim()){
 	                        ignore_policy_rego_file = sh(returnStdout: true, script: 'mktemp --suffix=.rego').trim()
 	                        sh """
 	                        cat > ${ignore_policy_rego_file} <<EOF
 	                        package trivy
 	                        import data.lib.trivy
 	                        default ignore = false
-	                        ignore_pkgs := ${env.IGNORE_PKGS}
+	                        ignore_pkgs := ${IGNORE_PKGS}
 	                        ignore {
 	                            input.PkgName == ignore_pkgs[_]
 	                        }
 	                        """
 	                    }
-	
+
 	                    // Trivy Security Check
 	                    // HTTP Proxy
 	                    def proxy_set_var = ""
 	                    if (env.HTTP_PROXY?.trim()){
 	                        proxy_set_var = " --env HTTP_PROXY=\"${pipelineParams.HTTP_PROXY}\" --env HTTPS_PROXY=\"${pipelineParams.HTTP_PROXY}\""
 	                    }
-	
+
 	                    // Ignore Policy
 	                    def ignore_policy_volume = ""
 	                    def ignore_policy_option = ""
@@ -102,7 +123,7 @@ def call(body){
 	                        ignore_policy_volume = "-v ${ignore_policy_rego_file}:${ignore_policy_rego_file}"
 	                        ignore_policy_option = "--ignore-policy ${ignore_policy_rego_file}"
 	                    }
-	
+
 	                    // Try to check GITHUB_TOKEN existance
 	                    try {
 	                        sh """
@@ -114,7 +135,7 @@ def call(body){
 	                                --ignore-unfixed --exit-code 1 --scanners vuln \
 	                                --vuln-type ${VUL_TYPE} \
 	                                ${ignore_policy_option} \
-	                                --severity HIGH,CRITICAL ${APP_NAME}:${BRANCH_NAME}-${SHORT_COMMIT}
+	                                --severity HIGH,CRITICAL lvthillo/python-flask-docker
 	                        """
 	                    } catch (Exception e) {
 	                        // Throw error to fail pipeline
@@ -125,7 +146,7 @@ def call(body){
 	                        if (ignore_policy_rego_file?.trim()){
 	                            sh "rm ${ignore_policy_rego_file}"
 	                        }
-	
+
 	                    }
 	                }
 	            }
